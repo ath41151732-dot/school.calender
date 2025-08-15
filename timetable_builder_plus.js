@@ -1,220 +1,288 @@
 
-// theme_switch_slider_inline.js
-// Place a Light/Dark slider inline RIGHT NEXT to the small note text on the list header
-// (e.g., the element that shows "휴일·시험·행사"). Adds a small gap between the text and slider.
-// - Only light/dark (no auto)
-// - Persists in localStorage
-// - Includes light-mode contrast fixes
-//
-// Usage: <script src="theme_switch_slider_inline.js"></script>
-// Best: mark the exact note element with an attribute for precise targeting:
-//   <span class="note" data-list-note>휴일·시험·행사</span>
-
+/* timetable_builder_plus.js
+ * - Injects "시간표 만들기" button into the existing .toolbar
+ * - Adds a builder modal to input subjects by grade, multiple classes, weekday, and period count
+ * - Exports one combined timetable.json
+ * - Patches CSS so the 시간표 보기(tt-grid) never clips 4,5교시 on desktop or mobile
+ */
 (function(){
-  const KEY = 'phhs_theme_mode';   // 'light' | 'dark'
-  const THEME_COLOR = { light: '#f4f6fb', dark: '#0b0f19' };
-
-  function cleanupOld(){
-    const oldBtn = document.getElementById('btnTheme');
-    if (oldBtn && oldBtn.parentNode) oldBtn.parentNode.removeChild(oldBtn);
-    document.querySelectorAll('.theme-switch-wrap,.theme-switch-anchor,.theme-switch-inline').forEach(w => w.remove());
-    ['theme-toggle-css','theme-toggle-v2-css','theme-toggle-v3-css',
-     'theme-switch-slider-css','theme-switch-slider-month-css',
-     'theme-switch-slider-month-pin-css','theme-switch-slider-list-css',
-     'theme-switch-slider-inline-css'].forEach(id=>{
-      const el = document.getElementById(id);
-      if (el && el.parentNode) el.parentNode.removeChild(el);
-    });
-  }
-
-  function injectCSS(){
+  document.addEventListener('DOMContentLoaded', function(){
+    // ------ Patch CSS for tt-grid (prevent clipping on narrow screens) ------
     const css = `
-      [data-theme="light"]{
-        --bg:#f4f6fb; --card:#ffffff; --surface:#ffffff; --surface-2:#f7f9fd;
-        --text:#0f172a; --muted:#475569; --accent:#4f46e5; --ring:rgba(79,70,229,.30);
-        --today:#b45309; --holiday:#dc2626; --exam:#b45309; --school:#15803d;
-        --border:#d6dbe4; --border-weak:#e1e5ed;
-        --chip:#eef2f9; --chip-border:#d6dbe4; --legend:#475569;
-        --cell-gap:6px;
-      }
-      [data-theme="dark"]{
-        --bg:#0b0f19; --card:#111827; --surface:#0b1220; --surface-2:rgba(255,255,255,.02);
-        --text:#e5e7eb; --muted:#9ca3af; --accent:#4f46e5; --ring:rgba(79,70,229,.35);
-        --today:#f59e0b; --holiday:#ef4444; --exam:#eab308; --school:#22c55e;
-        --border:rgba(255,255,255,.12); --border-weak:rgba(255,255,255,.08);
-        --chip:rgba(255,255,255,.06); --chip-border:rgba(255,255,255,.18); --legend:#cbd5e1;
-        --cell-gap:6px;
-      }
-      body{ background:var(--bg); color:var(--text); }
+      /* widen modal a bit and allow better wrapping on mobile */
+      .modal .sheet{ width: min(96vw, 680px) !important; }
 
-      /* Light-mode contrast fixes */
-      [data-theme="light"] button{ background:var(--surface); color:var(--text); border-color:var(--border); }
-      [data-theme="light"] button:hover{ background:var(--chip); border-color:var(--chip-border); }
-      [data-theme="light"] button.primary{
-        background: linear-gradient(180deg, var(--accent), #4338ca)!important;
-        color:#fff!important; border-color:transparent!important; box-shadow:0 8px 18px var(--ring);
+      /* timetable grid responsive: never clip, wrap with min column width */
+      .tt-result{ overflow-x: auto; } /* allow horizontal scroll just in case */
+      .tt-grid{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) !important;
+        gap: 8px !important;
       }
-      [data-theme="light"] .card{ background:linear-gradient(180deg,#fff,#f7f9fd); border:1px solid var(--border); }
-      [data-theme="light"] .header{ border-bottom:1px solid var(--border); }
-      [data-theme="light"] .cell{ background:var(--surface); border:1px solid var(--border); }
-      [data-theme="light"] .cell:hover{ background:var(--surface-2); border-color:var(--chip-border); }
-      [data-theme="light"] .selected{ background:rgba(79,70,229,.10)!important; border-color:rgba(79,70,229,.45); }
-      [data-theme="light"] .legend{ color:var(--legend); }
-      [data-theme="light"] .legend .item{ background:var(--surface-2); border-color:var(--border); }
-      [data-theme="light"] .row{ background:var(--surface-2); border:1px solid var(--border); }
-      [data-theme="light"] .row .t .ext{ background:var(--chip); border:1px solid var(--chip-border); color:var(--text); }
-      [data-theme="light"] .sheet{ background:var(--card); border:1px solid var(--border); }
-      [data-theme="light"] select,[data-theme="light"] input{ background:var(--surface); border:1px solid var(--border); color:var(--text); }
-      [data-theme="light"] .tt-result{ border-top:1px dashed var(--border); }
-      [data-theme="light"] .tt-period{ background:var(--surface-2); border:1px solid var(--border); }
-      [data-theme="light"] .tt-period .p{ color:#5b6472; }
-      [data-theme="light"] .weekdays{ border-bottom:1px solid var(--border); }
-      [data-theme="light"] .fill.holiday{ background:rgba(239,68,68,.10)!important; border-color:rgba(239,68,68,.25); }
-      [data-theme="light"] .fill.exam{ background:rgba(234,179,8,.12)!important; border-color:rgba(234,179,8,.28); }
-      [data-theme="light"] .fill.school{ background:rgba(34,197,94,.10)!important; border-color:rgba(34,197,94,.25); }
-      [data-theme="light"] .fill.personal{ background:rgba(56,189,248,.10)!important; border-color:rgba(56,189,248,.25); }
+      .tt-period{ min-width: 110px; }
 
-      /* Compact inline slider styles */
-      .theme-switch{
-        --h: 22px; --w: 52px; --pad: 3px; --kn: 16px;
-        position: relative; width: var(--w); height: var(--h);
-        border-radius: calc(var(--h) / 2);
-        background: linear-gradient(180deg,#0ea5e9,#6366f1);
-        display:inline-flex; align-items:center; padding: var(--pad);
-        cursor: pointer; user-select: none; border: 1px solid rgba(255,255,255,.25);
-        box-shadow: inset 0 1px 2px rgba(0,0,0,.12);
-        vertical-align: middle;
+      /* Extra safety on very small screens */
+      @media (max-width: 520px){
+        .tt-grid{ grid-template-columns: repeat(2, minmax(110px, 1fr)) !important; }
       }
-      [data-theme="light"] .theme-switch{ background: linear-gradient(180deg,#94a3b8,#64748b); border-color: rgba(0,0,0,.10); }
-      .theme-switch .knob{
-        width: var(--kn); height: var(--kn); border-radius: 50%;
-        background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25);
-        transform: translateX(0); transition: transform .22s ease;
+      @media (max-width: 380px){
+        .tt-grid{ grid-template-columns: 1fr !important; }
       }
-      .theme-switch.is-dark .knob{ transform: translateX(calc(var(--w) - var(--kn) - var(--pad)*2)); }
-      .theme-switch .ico{
-        position:absolute; top:50%; transform: translateY(-50%); font-size: 10px; opacity:.9;
-      }
-      .theme-switch .sun{ left: 6px; }
-      .theme-switch .moon{ right: 6px; }
-
-      .theme-switch-inline{
-        display:inline-flex; align-items:center; gap:6px; margin-left: 10px; /* small gap from text */
-      }
-      .theme-switch-label{ font-size: 12px; opacity:.82; white-space:nowrap; }
     `;
     const style = document.createElement('style');
-    style.id = 'theme-switch-slider-inline-css';
     style.textContent = css;
     document.head.appendChild(style);
-  }
 
-  function findListMonthHeader(){
-    const explicit = document.querySelector('[data-list-month-header]');
-    if (explicit) return explicit;
-    const right = document.querySelector('.right') || document;
-    const pattern = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*일정/;
-    const tags = right.querySelectorAll('h1,h2,h3,div,span,p');
-    for (const el of tags){
-      const txt = (el.textContent || '').trim();
-      if (pattern.test(txt)) return el;
+    // ------ Find toolbar to inject button ------
+    const toolbar = document.querySelector('.toolbar');
+    if (!toolbar) return; // nothing to do if toolbar missing
+
+    const btn = document.createElement('button');
+    btn.id = 'btnMakeTT';
+    btn.textContent = '시간표 만들기';
+    btn.title = '학년/다중 반/요일/교시별 과목 편집 → 한 번에 timetable.json 내보내기';
+    toolbar.prepend(btn);
+
+    // ------ Builder modal (DOM) ------
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'ttBuildModal';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.setAttribute('role', 'dialog');
+    modal.innerHTML = `
+      <div class="sheet">
+        <div class="head">
+          <div>시간표 만들기</div>
+          <button id="ttbClose">✕</button>
+        </div>
+        <div class="body">
+          <div class="row2">
+            <label for="ttbGrade">학년</label>
+            <select id="ttbGrade">
+              <option value="1">1학년</option>
+              <option value="2">2학년</option>
+              <option value="3">3학년</option>
+            </select>
+          </div>
+          <div class="row2">
+            <label for="ttbClasses">반(여러 개)</label>
+            <input id="ttbClasses" placeholder="예: 1,2,3 또는 1-1,1-2 / 쉼표로 구분"/>
+          </div>
+          <div class="row2">
+            <label for="ttbPeriods">교시 수</label>
+            <input id="ttbPeriods" type="number" min="1" max="12" value="7" />
+          </div>
+
+          <div class="row2">
+            <label>요일</label>
+            <div class="inline" id="ttbTabs">
+              <button class="mini" data-day="mon">월</button>
+              <button class="mini" data-day="tue">화</button>
+              <button class="mini" data-day="wed">수</button>
+              <button class="mini" data-day="thu">목</button>
+              <button class="mini" data-day="fri">금</button>
+            </div>
+          </div>
+
+          <div class="row2">
+            <label>반 선택</label>
+            <div class="inline">
+              <button id="ttbPrev" class="mini">◀ 이전 반</button>
+              <div id="ttbCurrent" style="font-weight:800">—</div>
+              <button id="ttbNext" class="mini">다음 반 ▶</button>
+            </div>
+          </div>
+
+          <div id="ttbEditor" class="tt-result"></div>
+
+          <div class="actions">
+            <button id="ttbClear" class="danger mini">현재 반·요일 초기화</button>
+            <button id="ttbExport" class="primary">JSON 내보내기</button>
+          </div>
+          <div class="hint">
+            * 입력 방법: 먼저 학년/반/교시 수를 정하고 요일 탭을 눌러 과목을 입력하세요.<br/>
+            * 여러 반을 쉼표로 구분해서 넣을 수 있습니다(예: 1,2,3 또는 1-1,1-2).<br/>
+            * 내보내기하면 모든 반·요일의 입력값을 <code>timetable.json</code> 형식으로 다운로드합니다.
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // ------ State ------
+    const KO = {mon:'월',tue:'화',wed:'수',thu:'목',fri:'금'};
+    let state = {
+      grade: '1',
+      classKeys: [],   // ["1-1","1-2",...]
+      idx: 0,          // active class index
+      day: 'mon',
+      periods: 7,
+      data: {}         // { "1-1": { mon:[], tue:[], ... } }
+    };
+
+    // ------ DOM refs ------
+    const ttbGrade   = modal.querySelector('#ttbGrade');
+    const ttbClasses = modal.querySelector('#ttbClasses');
+    const ttbPeriods = modal.querySelector('#ttbPeriods');
+    const ttbTabs    = modal.querySelector('#ttbTabs');
+    const ttbPrev    = modal.querySelector('#ttbPrev');
+    const ttbNext    = modal.querySelector('#ttbNext');
+    const ttbCurrent = modal.querySelector('#ttbCurrent');
+    const ttbEditor  = modal.querySelector('#ttbEditor');
+    const ttbExport  = modal.querySelector('#ttbExport');
+    const ttbClear   = modal.querySelector('#ttbClear');
+    const ttbClose   = modal.querySelector('#ttbClose');
+
+    // ------ Helpers ------
+    function normalizeClassTokens(grade, raw){
+      if (!raw) return [];
+      const tokens = raw.split(',').map(s => s.trim()).filter(Boolean);
+      const out = [];
+      for (const tk of tokens){
+        if (/^\d+\s*-\s*\d+$/.test(tk)){
+          // already "g-c"
+          const [g,c] = tk.split('-').map(x => x.replace(/[^\d]/g,''));
+          out.push(`${+g}-${+c}`);
+        }else{
+          // just "c"
+          const c = tk.replace(/[^\d]/g,'');
+          if (c) out.push(`${+grade}-${+c}`);
+        }
+      }
+      // unique & sorted by class number
+      return Array.from(new Set(out)).sort((a,b) => (+a.split('-')[1])-(+b.split('-')[1]));
     }
-    return null;
-  }
-
-  // Find the small note element (e.g., "휴일·시험·행사") on the list header line
-  function findNoteElement(){
-    const explicit = document.querySelector('[data-list-note]');
-    if (explicit) return explicit;
-    const right = document.querySelector('.right') || document;
-    const header = findListMonthHeader();
-    // Prefer searching within the same line or siblings
-    const scope = (header && header.parentElement) ? header.parentElement : right;
-    const pattern = /휴일.*시험.*행사|시험.*휴일.*행사|행사.*휴일.*시험/;
-    const nodes = scope.querySelectorAll('small, span, div, p');
-    for (const el of nodes){
-      const txt = (el.textContent || '').replace(/\s+/g,'').trim();
-      if (!txt) continue;
-      if (pattern.test(txt)) return el;
+    function ensureBuckets(){
+      for (const key of state.classKeys){
+        if (!state.data[key]) state.data[key] = {mon:[],tue:[],wed:[],thu:[],fri:[]};
+        for (const d of ['mon','tue','wed','thu','fri']){
+          const arr = state.data[key][d];
+          if (!Array.isArray(arr)) state.data[key][d] = [];
+          // resize with empty strings
+          const need = state.periods;
+          if (arr.length < need) state.data[key][d] = arr.concat(Array(need - arr.length).fill(''));
+          if (arr.length > need) state.data[key][d] = arr.slice(0, need);
+        }
+      }
     }
-    // As a last fallback, return toolbar
-    return document.querySelector('.toolbar') || document.body;
-  }
-
-  function ensureThemeMeta(){
-    let m = document.querySelector('meta[name="theme-color"]');
-    if (!m){
-      m = document.createElement('meta');
-      m.setAttribute('name','theme-color');
-      document.head.appendChild(m);
+    function renderEditor(){
+      ensureBuckets();
+      const key = state.classKeys[state.idx];
+      ttbCurrent.textContent = key ? key : '—';
+      ttbTabs.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('primary', b.dataset.day === state.day);
+      });
+      if (!key){
+        ttbEditor.innerHTML = '<div class="hint">먼저 반 목록을 입력하세요.</div>';
+        return;
+      }
+      const arr = state.data[key][state.day];
+      const html = `
+        <div style="font-weight:900;margin-bottom:8px">${key} · ${KO[state.day]}요일 (${state.periods}교시)</div>
+        <div class="tt-grid">
+          ${arr.map((v,i)=>`
+            <div class="tt-period">
+              <div class="p">${i+1}교시</div>
+              <div class="c">
+                <input data-idx="${i}" type="text" placeholder="${i+1}교시 과목" value="${(v||'').replace(/"/g,'&quot;')}"
+                       style="width:100%; background:#0f172a; border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:6px; color:#e5e7eb"/>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      ttbEditor.innerHTML = html;
+      ttbEditor.querySelectorAll('input[data-idx]').forEach(inp => {
+        inp.addEventListener('input', (e)=>{
+          const i = +e.target.dataset.idx;
+          state.data[key][state.day][i] = e.target.value.trim();
+        });
+      });
     }
-    return m;
-  }
-
-  function apply(mode){
-    const root = document.documentElement;
-    root.setAttribute('data-theme', mode);
-    const meta = ensureThemeMeta();
-    meta.setAttribute('content', THEME_COLOR[mode] || THEME_COLOR.dark);
-    if (switchEl){
-      switchEl.classList.toggle('is-dark', mode === 'dark');
-      if (labelEl) labelEl.textContent = mode === 'dark' ? '다크' : '라이트';
+    function openModal(){
+      // init with current controls
+      state.grade   = ttbGrade.value || '1';
+      state.classKeys = normalizeClassTokens(state.grade, ttbClasses.value);
+      state.idx = 0;
+      state.periods = Math.max(1, Math.min(12, parseInt(ttbPeriods.value||'7', 10)));
+      ensureBuckets();
+      renderEditor();
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden','false');
     }
-  }
+    function closeModal(){
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden','true');
+    }
 
-  function toggleMode(){
-    const cur = (localStorage.getItem(KEY) || 'dark');
-    const next = cur === 'dark' ? 'light' : 'dark';
-    localStorage.setItem(KEY, next);
-    apply(next);
-  }
+    // ------ Events ------
+    btn.addEventListener('click', openModal);
+    ttbClose.addEventListener('click', closeModal);
 
-  let switchEl, labelEl;
-  function injectSwitch(){
-    const note = findNoteElement();
-    const wrap = document.createElement('span');
-    wrap.className = 'theme-switch-inline';
-
-    const sw = document.createElement('span');
-    sw.className = 'theme-switch';
-    sw.setAttribute('role','switch');
-    sw.setAttribute('aria-label','테마 전환 (라이트/다크)');
-    sw.tabIndex = 0;
-    sw.innerHTML = '<span class="ico sun">☀️</span><span class="ico moon">🌙</span><span class="knob"></span>';
-    sw.addEventListener('click', toggleMode);
-    sw.addEventListener('keydown', (e)=>{
-      if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); toggleMode(); }
+    ttbGrade.addEventListener('change', ()=>{
+      state.grade = ttbGrade.value || '1';
+      state.classKeys = normalizeClassTokens(state.grade, ttbClasses.value);
+      state.idx = 0;
+      renderEditor();
+    });
+    ttbClasses.addEventListener('change', ()=>{
+      state.classKeys = normalizeClassTokens(state.grade, ttbClasses.value);
+      state.idx = 0;
+      renderEditor();
+    });
+    ttbPeriods.addEventListener('change', ()=>{
+      state.periods = Math.max(1, Math.min(12, parseInt(ttbPeriods.value||'7', 10)));
+      renderEditor();
+    });
+    ttbTabs.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', ()=>{
+        state.day = b.dataset.day;
+        renderEditor();
+      });
+    });
+    ttbPrev.addEventListener('click', ()=>{
+      if (!state.classKeys.length) return;
+      state.idx = (state.idx - 1 + state.classKeys.length) % state.classKeys.length;
+      renderEditor();
+    });
+    ttbNext.addEventListener('click', ()=>{
+      if (!state.classKeys.length) return;
+      state.idx = (state.idx + 1) % state.classKeys.length;
+      renderEditor();
+    });
+    ttbClear.addEventListener('click', ()=>{
+      const key = state.classKeys[state.idx];
+      if (!key) return;
+      if (!confirm(`${key} · ${KO[state.day]} 요일 입력을 초기화할까요?`)) return;
+      state.data[key][state.day] = Array(state.periods).fill('');
+      renderEditor();
     });
 
-    const label = document.createElement('span');
-    label.className = 'theme-switch-label';
-    label.textContent = '다크';
-
-    wrap.appendChild(sw);
-    wrap.appendChild(label);
-
-    // Insert right AFTER the note element
-    if (note.nextSibling){
-      note.parentNode.insertBefore(wrap, note.nextSibling);
-    } else {
-      note.parentNode.appendChild(wrap);
-    }
-
-    switchEl = sw;
-    labelEl = label;
-  }
-
-  function init(){
-    cleanupOld();
-    injectCSS();
-    injectSwitch();
-    const saved = (localStorage.getItem(KEY) || 'dark'); // default dark
-    apply(saved);
-  }
-
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+    // ------ Export JSON ------
+    ttbExport.addEventListener('click', ()=>{
+      if (!state.classKeys.length){
+        alert('반 목록이 비어 있습니다.');
+        return;
+      }
+      // Clean copy: trim blanks at the tail for each day
+      const out = {};
+      for (const key of state.classKeys){
+        out[key] = {};
+        for (const d of ['mon','tue','wed','thu','fri']){
+          const arr = (state.data[key][d] || []).slice(0, state.periods);
+          // remove trailing empty strings
+          let end = arr.length;
+          while (end>0 && (!arr[end-1] || !arr[end-1].trim())) end--;
+          out[key][d] = arr.slice(0, end);
+        }
+      }
+      const blob = new Blob([JSON.stringify(out, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'timetable.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
 })();
