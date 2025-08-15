@@ -1,27 +1,32 @@
 
-// theme_switch_slider.js
-// Light/Dark slider switch placed in the calendar month header.
-// - No 'auto' mode (only light/dark)
+// theme_switch_slider_inline.js
+// Place a Light/Dark slider inline RIGHT NEXT to the small note text on the list header
+// (e.g., the element that shows "휴일·시험·행사"). Adds a small gap between the text and slider.
+// - Only light/dark (no auto)
 // - Persists in localStorage
-// - Includes light-mode contrast fixes so labels/buttons remain readable
+// - Includes light-mode contrast fixes
 //
-// Usage: <script src="theme_switch_slider.js"></script>
+// Usage: <script src="theme_switch_slider_inline.js"></script>
+// Best: mark the exact note element with an attribute for precise targeting:
+//   <span class="note" data-list-note>휴일·시험·행사</span>
 
 (function(){
   const KEY = 'phhs_theme_mode';   // 'light' | 'dark'
   const THEME_COLOR = { light: '#f4f6fb', dark: '#0b0f19' };
 
-  // Remove old toolbar toggle if present
   function cleanupOld(){
     const oldBtn = document.getElementById('btnTheme');
     if (oldBtn && oldBtn.parentNode) oldBtn.parentNode.removeChild(oldBtn);
-    ['theme-toggle-css','theme-toggle-v2-css','theme-toggle-v3-css'].forEach(id=>{
+    document.querySelectorAll('.theme-switch-wrap,.theme-switch-anchor,.theme-switch-inline').forEach(w => w.remove());
+    ['theme-toggle-css','theme-toggle-v2-css','theme-toggle-v3-css',
+     'theme-switch-slider-css','theme-switch-slider-month-css',
+     'theme-switch-slider-month-pin-css','theme-switch-slider-list-css',
+     'theme-switch-slider-inline-css'].forEach(id=>{
       const el = document.getElementById(id);
       if (el && el.parentNode) el.parentNode.removeChild(el);
     });
   }
 
-  // CSS: palettes + contrast fixes + slider styles
   function injectCSS(){
     const css = `
       [data-theme="light"]{
@@ -69,15 +74,16 @@
       [data-theme="light"] .fill.school{ background:rgba(34,197,94,.10)!important; border-color:rgba(34,197,94,.25); }
       [data-theme="light"] .fill.personal{ background:rgba(56,189,248,.10)!important; border-color:rgba(56,189,248,.25); }
 
-      /* Slider switch styles */
+      /* Compact inline slider styles */
       .theme-switch{
-        --h: 28px; --w: 66px; --pad: 3px; --kn: 22px;
+        --h: 22px; --w: 52px; --pad: 3px; --kn: 16px;
         position: relative; width: var(--w); height: var(--h);
         border-radius: calc(var(--h) / 2);
         background: linear-gradient(180deg,#0ea5e9,#6366f1);
         display:inline-flex; align-items:center; padding: var(--pad);
         cursor: pointer; user-select: none; border: 1px solid rgba(255,255,255,.25);
         box-shadow: inset 0 1px 2px rgba(0,0,0,.12);
+        vertical-align: middle;
       }
       [data-theme="light"] .theme-switch{ background: linear-gradient(180deg,#94a3b8,#64748b); border-color: rgba(0,0,0,.10); }
       .theme-switch .knob{
@@ -87,39 +93,51 @@
       }
       .theme-switch.is-dark .knob{ transform: translateX(calc(var(--w) - var(--kn) - var(--pad)*2)); }
       .theme-switch .ico{
-        position:absolute; top:50%; transform: translateY(-50%); font-size: 12px; opacity:.9;
+        position:absolute; top:50%; transform: translateY(-50%); font-size: 10px; opacity:.9;
       }
-      .theme-switch .sun{ left: 8px; }
-      .theme-switch .moon{ right: 8px; }
-      .theme-switch-wrap{
-        display:inline-flex; align-items:center; gap:8px; margin-left:12px;
+      .theme-switch .sun{ left: 6px; }
+      .theme-switch .moon{ right: 6px; }
+
+      .theme-switch-inline{
+        display:inline-flex; align-items:center; gap:6px; margin-left: 10px; /* small gap from text */
       }
-      .theme-switch-label{ font-size: 12px; opacity:.85; }
+      .theme-switch-label{ font-size: 12px; opacity:.82; white-space:nowrap; }
     `;
     const style = document.createElement('style');
-    style.id = 'theme-switch-slider-css';
+    style.id = 'theme-switch-slider-inline-css';
     style.textContent = css;
     document.head.appendChild(style);
   }
 
-  // Try to find the calendar month header to attach the switch
-  function findCalendarHeader(){
-    const candidates = [
-      '[data-calendar-header]',
-      '.calendar .header',
-      '.calendar-header',
-      '.monthbar',
-      '.header'
-    ];
-    for (const sel of candidates){
-      const el = document.querySelector(sel);
-      if (!el) continue;
-      // Heuristic: header usually contains month text or prev/next controls
-      const hasArrows = el.querySelector('.prev,.next,.btnPrev,.btnNext,#prev,#next');
-      const hasMonthText = /년|월|January|February|March|April|May|June|July|August|September|October|November|December/.test(el.textContent || '');
-      if (hasArrows || hasMonthText) return el;
+  function findListMonthHeader(){
+    const explicit = document.querySelector('[data-list-month-header]');
+    if (explicit) return explicit;
+    const right = document.querySelector('.right') || document;
+    const pattern = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*일정/;
+    const tags = right.querySelectorAll('h1,h2,h3,div,span,p');
+    for (const el of tags){
+      const txt = (el.textContent || '').trim();
+      if (pattern.test(txt)) return el;
     }
-    // Fallback to toolbar
+    return null;
+  }
+
+  // Find the small note element (e.g., "휴일·시험·행사") on the list header line
+  function findNoteElement(){
+    const explicit = document.querySelector('[data-list-note]');
+    if (explicit) return explicit;
+    const right = document.querySelector('.right') || document;
+    const header = findListMonthHeader();
+    // Prefer searching within the same line or siblings
+    const scope = (header && header.parentElement) ? header.parentElement : right;
+    const pattern = /휴일.*시험.*행사|시험.*휴일.*행사|행사.*휴일.*시험/;
+    const nodes = scope.querySelectorAll('small, span, div, p');
+    for (const el of nodes){
+      const txt = (el.textContent || '').replace(/\s+/g,'').trim();
+      if (!txt) continue;
+      if (pattern.test(txt)) return el;
+    }
+    // As a last fallback, return toolbar
     return document.querySelector('.toolbar') || document.body;
   }
 
@@ -138,7 +156,6 @@
     root.setAttribute('data-theme', mode);
     const meta = ensureThemeMeta();
     meta.setAttribute('content', THEME_COLOR[mode] || THEME_COLOR.dark);
-    // Update slider position
     if (switchEl){
       switchEl.classList.toggle('is-dark', mode === 'dark');
       if (labelEl) labelEl.textContent = mode === 'dark' ? '다크' : '라이트';
@@ -154,18 +171,16 @@
 
   let switchEl, labelEl;
   function injectSwitch(){
-    const header = findCalendarHeader();
-    const wrap = document.createElement('div');
-    wrap.className = 'theme-switch-wrap';
-    // Inline style attempt to align right if header uses flex
-    wrap.style.marginLeft = 'auto';
+    const note = findNoteElement();
+    const wrap = document.createElement('span');
+    wrap.className = 'theme-switch-inline';
 
-    const sw = document.createElement('div');
+    const sw = document.createElement('span');
     sw.className = 'theme-switch';
     sw.setAttribute('role','switch');
     sw.setAttribute('aria-label','테마 전환 (라이트/다크)');
     sw.tabIndex = 0;
-    sw.innerHTML = '<span class="ico sun">☀️</span><span class="ico moon">🌙</span><div class="knob"></div>';
+    sw.innerHTML = '<span class="ico sun">☀️</span><span class="ico moon">🌙</span><span class="knob"></span>';
     sw.addEventListener('click', toggleMode);
     sw.addEventListener('keydown', (e)=>{
       if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); toggleMode(); }
@@ -178,8 +193,12 @@
     wrap.appendChild(sw);
     wrap.appendChild(label);
 
-    // Insert at the end of header
-    header.appendChild(wrap);
+    // Insert right AFTER the note element
+    if (note.nextSibling){
+      note.parentNode.insertBefore(wrap, note.nextSibling);
+    } else {
+      note.parentNode.appendChild(wrap);
+    }
 
     switchEl = sw;
     labelEl = label;
